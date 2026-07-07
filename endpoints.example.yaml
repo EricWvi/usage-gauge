@@ -1,0 +1,7 @@
+endpoints:
+  - name: zai
+    url: https://api.z.ai/api/monitor/usage/quota/limit
+    methods: GET
+    headers:
+      Authorization: < YOUR_API_KEY >
+      Content-Type: application/json

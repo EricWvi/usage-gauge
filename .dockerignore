@@ -1,0 +1,13 @@
+# Keep secrets and large trees out of the build context / image.
+config
+.git
+.gitignore
+.dockerignore
+Dockerfile
+README.md
+examples
+*.md
+
+# local build artifacts
+usage-gauge
+usage-gauge.exe

@@ -1,0 +1,32 @@
+{{define "cards"}}
+{{range .Records}}
+<section class="card status-{{.Status}}">
+  <div class="card-head">
+    <div class="card-title">
+      <h2 class="card-name">{{.Name}}</h2>
+      {{if .Message}}<span class="card-message">{{.Message}}</span>{{end}}
+    </div>
+    <span class="badge badge-{{.Status}}">{{.Status}}</span>
+  </div>
+  {{range .Tiers}}
+  <div class="tier">
+    <div class="tier-head">
+      <span class="tier-name">{{.Name}}</span>
+      {{if .ResetsAt}}<span class="tier-reset">resets {{fmtTime .ResetsAt}}</span>{{end}}
+    </div>
+    <div class="bar" title="{{tierMeta .}}">
+      <div class="bar-fill fill-{{utilColor .Utilization .Limit .Used}}" style="width: {{utilPct .Utilization .Limit .Used}}%"></div>
+    </div>
+    {{if tierMeta .}}<div class="tier-meta">{{tierMeta .}}</div>{{end}}
+  </div>
+  {{else}}
+  <div class="tier-empty">No usage windows reported.</div>
+  {{end}}
+  {{if .Error}}<div class="error-text">{{.Error}}</div>{{end}}
+</section>
+{{else}}
+<section class="card card-placeholder">
+  <div class="placeholder">Waiting for the first refresh…</div>
+</section>
+{{end}}
+{{end}}

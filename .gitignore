@@ -1,0 +1,11 @@
+# Runtime config (endpoints.yaml with real keys, user parsers, gauge.db)
+config
+
+# Local build artifacts
+/usage-gauge
+*.exe
+
+# SQLite runtime files
+*.db
+*.db-wal
+*.db-shm
