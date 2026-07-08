@@ -1,5 +1,6 @@
 # Keep secrets and large trees out of the build context / image.
-config
+# Anchored to repo root so it does NOT match the internal/config source package.
+/config/
 .git
 .gitignore
 .dockerignore

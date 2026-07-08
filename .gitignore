@@ -1,5 +1,6 @@
 # Runtime config (endpoints.yaml with real keys, user parsers, gauge.db)
-config
+# Anchored to repo root so it does NOT match the internal/config source package.
+/config/
 
 # Local build artifacts
 /usage-gauge
