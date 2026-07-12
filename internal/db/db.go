@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
 
@@ -144,4 +145,28 @@ func (s *Store) LastSuccessAt() (int64, error) {
 // MarkLastSuccess records the epoch-ms timestamp of a successful refresh.
 func (s *Store) MarkLastSuccess(at int64) error {
 	return s.SetMeta(metaLastSuccessAt, fmt.Sprintf("%d", at))
+}
+
+// DeleteNotIn deletes usage records whose name is not in keep. Returns the
+// number of rows deleted.
+func (s *Store) DeleteNotIn(keep []string) (int64, error) {
+	if len(keep) == 0 {
+		res, err := s.db.Exec(`DELETE FROM usage`)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+	placeholders := make([]string, len(keep))
+	args := make([]any, len(keep))
+	for i, name := range keep {
+		placeholders[i] = "?"
+		args[i] = name
+	}
+	query := `DELETE FROM usage WHERE name NOT IN (` + strings.Join(placeholders, ",") + `)`
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

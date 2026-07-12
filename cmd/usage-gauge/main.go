@@ -25,6 +25,8 @@ func main() {
 	}
 	defer store.Close()
 
+	cleanupStale(store)
+
 	engine := parser.New()
 	refresher := refresh.New(store, engine)
 
@@ -72,4 +74,24 @@ func port() string {
 		return v
 	}
 	return "3000"
+}
+
+func cleanupStale(store *db.Store) {
+	eps, err := config.LoadEndpoints()
+	if err != nil {
+		log.Printf("[usage-gauge] skip cleanup, load endpoints: %v", err)
+		return
+	}
+	names := make([]string, len(eps))
+	for i := range eps {
+		names[i] = eps[i].Name
+	}
+	n, err := store.DeleteNotIn(names)
+	if err != nil {
+		log.Printf("[usage-gauge] cleanup stale records: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("[usage-gauge] removed %d stale record(s)", n)
+	}
 }
