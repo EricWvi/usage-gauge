@@ -73,6 +73,13 @@ go run ./cmd/usage-gauge
 # API：http://localhost:3000/api/usage
 ```
 
+本地构建的 Go 二进制文件统一输出到 `build/`：
+
+```bash
+task build:usage-gauge
+task build:codex-usage
+```
+
 环境变量：
 
 | 变量                  | 默认值       | 说明 |

@@ -10,8 +10,7 @@ examples
 *.md
 
 # local build artifacts
-usage-gauge
-usage-gauge.exe
+/build/
 node_modules
 web/node_modules
 web/test-results

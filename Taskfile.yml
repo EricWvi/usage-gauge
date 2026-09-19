@@ -1,0 +1,14 @@
+version: '3'
+
+tasks:
+  build:usage-gauge:
+    desc: 构建 usage-gauge 二进制文件
+    cmds:
+      - mkdir -p build
+      - go build -o build/usage-gauge ./cmd/usage-gauge
+
+  build:codex-usage:
+    desc: 构建 codex-usage 二进制文件
+    cmds:
+      - mkdir -p build
+      - go build -o build/codex-usage ./cmd/codex-usage

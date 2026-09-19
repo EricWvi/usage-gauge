@@ -3,9 +3,7 @@
 /config/
 
 # Local build artifacts
-/usage-gauge
-/codex-usage
-*.exe
+/build/
 
 # SQLite runtime files
 *.db
