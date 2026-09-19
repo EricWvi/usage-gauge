@@ -15,6 +15,7 @@ const (
 // future services with absolute quotas may fill Used/Limit/Unit instead.
 type UsageTier struct {
 	Name        string  `json:"name"`
+	Label       string  `json:"label,omitempty"`
 	Utilization float64 `json:"utilization"`
 	Used        float64 `json:"used,omitempty"`
 	Limit       float64 `json:"limit,omitempty"`

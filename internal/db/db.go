@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
 
@@ -26,7 +27,16 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS samples (
+  name TEXT NOT NULL,
+  sampled_at INTEGER NOT NULL,
+  payload TEXT NOT NULL,
+  PRIMARY KEY (name, sampled_at)
+);
+CREATE INDEX IF NOT EXISTS samples_time ON samples(sampled_at);
 `
+
+const Retention = 48 * time.Hour
 
 const (
 	metaLastSuccessAt = "last_success_at"
@@ -57,19 +67,35 @@ func Open(path string) (*Store, error) {
 		d.Close()
 		return nil, err
 	}
-	return &Store{db: d}, nil
+	s := &Store{db: d}
+	// Preserve the existing latest reading when upgrading from the cache-only DB.
+	if _, err := d.Exec(`INSERT OR IGNORE INTO samples (name, sampled_at, payload)
+		SELECT name, updated_at, payload FROM usage WHERE updated_at >= ?`, time.Now().Add(-Retention).UnixMilli()); err != nil {
+		d.Close()
+		return nil, err
+	}
+	if err := s.Prune(time.Now()); err != nil {
+		d.Close()
+		return nil, err
+	}
+	return s, nil
 }
 
 // Close closes the underlying connection.
 func (s *Store) Close() error { return s.db.Close() }
 
-// Upsert stores the latest result for an endpoint.
+// Upsert atomically saves the latest result and a historical sample, including failures.
 func (s *Store) Upsert(name string, r types.UsageResult, updatedAt int64) error {
 	payload, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(
 		`INSERT INTO usage (name, payload, status, queried_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
@@ -79,7 +105,56 @@ func (s *Store) Upsert(name string, r types.UsageResult, updatedAt int64) error 
 		   updated_at = excluded.updated_at`,
 		name, string(payload), string(r.Status), r.QueriedAt, updatedAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO samples (name, sampled_at, payload) VALUES (?, ?, ?)
+		ON CONFLICT(name, sampled_at) DO UPDATE SET payload = excluded.payload`, name, updatedAt, string(payload)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Prune removes readings outside the rolling retention window, even if all endpoints fail.
+func (s *Store) Prune(now time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	cutoff := now.Add(-Retention).UnixMilli()
+	for _, table := range []string{"samples", "usage"} {
+		column := "sampled_at"
+		if table == "usage" {
+			column = "updated_at"
+		}
+		if _, err := tx.Exec("DELETE FROM "+table+" WHERE "+column+" < ?", cutoff); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// History returns all retained samples grouped by endpoint, oldest first.
+func (s *Store) History(since int64) (map[string][]types.UsageRecord, error) {
+	rows, err := s.db.Query(`SELECT name, payload, sampled_at FROM samples WHERE sampled_at >= ? ORDER BY sampled_at`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string][]types.UsageRecord)
+	for rows.Next() {
+		var r types.UsageRecord
+		var payload string
+		if err := rows.Scan(&r.Name, &payload, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(payload), &r.UsageResult); err != nil {
+			return nil, err
+		}
+		out[r.Name] = append(out[r.Name], r)
+	}
+	return out, rows.Err()
 }
 
 // All returns every stored usage record, ordered by name for stable display.
@@ -150,23 +225,31 @@ func (s *Store) MarkLastSuccess(at int64) error {
 // DeleteNotIn deletes usage records whose name is not in keep. Returns the
 // number of rows deleted.
 func (s *Store) DeleteNotIn(keep []string) (int64, error) {
-	if len(keep) == 0 {
-		res, err := s.db.Exec(`DELETE FROM usage`)
-		if err != nil {
-			return 0, err
-		}
-		return res.RowsAffected()
-	}
-	placeholders := make([]string, len(keep))
-	args := make([]any, len(keep))
-	for i, name := range keep {
-		placeholders[i] = "?"
-		args[i] = name
-	}
-	query := `DELETE FROM usage WHERE name NOT IN (` + strings.Join(placeholders, ",") + `)`
-	res, err := s.db.Exec(query, args...)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	defer tx.Rollback()
+	condition := ""
+	args := make([]any, len(keep))
+	if len(keep) > 0 {
+		placeholders := make([]string, len(keep))
+		for i, name := range keep {
+			placeholders[i] = "?"
+			args[i] = name
+		}
+		condition = " WHERE name NOT IN (" + strings.Join(placeholders, ",") + ")"
+	}
+	if _, err := tx.Exec("DELETE FROM samples"+condition, args...); err != nil {
+		return 0, err
+	}
+	res, err := tx.Exec("DELETE FROM usage"+condition, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
 }

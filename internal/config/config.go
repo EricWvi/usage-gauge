@@ -44,5 +44,19 @@ func LoadEndpoints() ([]types.EndpointConfig, error) {
 	if err := yaml.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parse endpoints.yaml: %w", err)
 	}
+	names := make(map[string]bool)
+	for i := range f.Endpoints {
+		ep := &f.Endpoints[i]
+		if ep.Name == "" || ep.URL == "" {
+			return nil, fmt.Errorf("each endpoint requires name and url")
+		}
+		if names[ep.Name] {
+			return nil, fmt.Errorf("duplicate endpoint name: %s", ep.Name)
+		}
+		names[ep.Name] = true
+		if ep.Methods == "" {
+			ep.Methods = "GET"
+		}
+	}
 	return f.Endpoints, nil
 }

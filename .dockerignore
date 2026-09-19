@@ -12,3 +12,10 @@ examples
 # local build artifacts
 usage-gauge
 usage-gauge.exe
+node_modules
+web/node_modules
+web/test-results
+web/playwright-report
+# The frontend stage generates these assets from source.
+/web/dist/
+/internal/ui/dist/

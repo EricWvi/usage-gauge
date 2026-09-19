@@ -1,100 +1,94 @@
+// Package server serves the embedded dashboard and its sampled usage data.
 package server
 
 import (
 	"encoding/json"
-	"io/fs"
+	"log"
 	"net/http"
+	"time"
 
+	"usage-gauge/internal/config"
 	"usage-gauge/internal/db"
-	"usage-gauge/internal/ui"
+	"usage-gauge/internal/types"
+	"usage-gauge/web"
 )
 
-// Server holds shared dependencies for the HTTP handlers.
 type Server struct {
 	store    *db.Store
-	renderer *Renderer
+	assets   http.Handler
+	interval time.Duration
 }
 
-// New creates a Server with a freshly parsed renderer.
-func New(store *db.Store) (*Server, error) {
-	r, err := NewRenderer()
+func New(store *db.Store, interval time.Duration) (*Server, error) {
+	assets, err := web.Handler()
 	if err != nil {
 		return nil, err
 	}
-	return &Server{store: store, renderer: r}, nil
+	return &Server{store: store, assets: assets, interval: interval}, nil
 }
 
-// Routes returns the HTTP mux with the app routes registered.
 func (s *Server) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /api/usage", s.handleAPI)
-
-	staticSub, err := fs.Sub(ui.Files, "static")
-	if err != nil {
-		// Should never happen: static/ is embedded at build time.
-		panic(err)
+	if s.assets != nil {
+		mux.Handle("GET /", s.assets)
 	}
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
 	return mux
 }
 
-func (s *Server) pageData() (PageData, error) {
-	records, err := s.store.All()
-	if err != nil {
-		return PageData{}, err
-	}
-	last, err := s.store.LastSuccessAt()
-	if err != nil {
-		return PageData{}, err
-	}
-	return PageData{
-		LastSuccessAt:   last,
-		LastUpdatedText: lastUpdatedText(last),
-		Records:         records,
-	}, nil
+type endpointData struct {
+	Name     string              `json:"name"`
+	Provider string              `json:"provider"`
+	Latest   *types.UsageRecord  `json:"latest"`
+	History  []types.UsageRecord `json:"history"`
 }
 
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	data, err := s.pageData()
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	out, err := s.renderer.RenderPage(data)
-	if err != nil {
-		http.Error(w, "render error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(out))
-}
-
-// apiResponse is what /api/usage returns for client polling.
 type apiResponse struct {
-	LastUpdatedAt   int64  `json:"lastUpdatedAt"`
-	LastUpdatedText string `json:"lastUpdatedText"`
-	HTML            string `json:"html"`
+	LastUpdatedAt    int64          `json:"lastUpdatedAt"`
+	ServerTime       int64          `json:"serverTime"`
+	RetentionHours   int            `json:"retentionHours"`
+	SampleIntervalMs int64          `json:"sampleIntervalMs"`
+	Endpoints        []endpointData `json:"endpoints"`
 }
 
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
-	data, err := s.pageData()
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	html, err := s.renderer.RenderCards(data)
-	if err != nil {
-		http.Error(w, "render error", http.StatusInternalServerError)
-		return
-	}
-	resp := apiResponse{
-		LastUpdatedAt:   data.LastSuccessAt,
-		LastUpdatedText: data.LastUpdatedText,
-		HTML:            html,
-	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(resp)
+	data, err := s.data()
+	if err != nil {
+		log.Printf("[usage-gauge] load dashboard: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Unable to load usage data. Check the server configuration and logs."})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) data() (apiResponse, error) {
+	now := time.Now()
+	out := apiResponse{ServerTime: now.UnixMilli(), RetentionHours: 48, SampleIntervalMs: s.interval.Milliseconds(), Endpoints: []endpointData{}}
+	eps, err := config.LoadEndpoints()
+	if err != nil {
+		return out, err
+	}
+	history, err := s.store.History(now.Add(-db.Retention).UnixMilli())
+	if err != nil {
+		return out, err
+	}
+	out.LastUpdatedAt, err = s.store.LastSuccessAt()
+	if err != nil {
+		return out, err
+	}
+	for _, ep := range eps {
+		samples := history[ep.Name]
+		if samples == nil {
+			samples = []types.UsageRecord{}
+		}
+		entry := endpointData{Name: ep.Name, Provider: ep.ParserName(), History: samples}
+		if len(samples) > 0 {
+			entry.Latest = &samples[len(samples)-1]
+		}
+		out.Endpoints = append(out.Endpoints, entry)
+	}
+	return out, nil
 }

@@ -4,9 +4,18 @@
 
 # Local build artifacts
 /usage-gauge
+/codex-usage
 *.exe
 
 # SQLite runtime files
 *.db
 *.db-wal
 *.db-shm
+
+# Frontend dependencies and browser test artifacts
+node_modules/
+/web/dist/
+# Legacy frontend output (before moving Vite output to web/dist).
+/internal/ui/dist/
+/web/test-results/
+/web/playwright-report/

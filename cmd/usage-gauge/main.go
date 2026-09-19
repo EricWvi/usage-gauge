@@ -35,14 +35,14 @@ func main() {
 
 	refresher.Start(ctx, refreshInterval())
 
-	srv, err := server.New(store)
+	srv, err := server.New(store, refreshInterval())
 	if err != nil {
 		log.Fatalf("init server: %v", err)
 	}
 
 	httpSrv := &http.Server{
-		Addr:    ":" + port(),
-		Handler: srv.Routes(),
+		Addr:              ":" + port(),
+		Handler:           srv.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

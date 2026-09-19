@@ -28,6 +28,10 @@ func Endpoint(ctx context.Context, ep types.EndpointConfig) (Response, error) {
 	timeout := time.Duration(ep.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = defaultTimeout
+		// Allow the local bridge's 30-second RPC timeout to produce its error response.
+		if ep.ParserName() == "codex" {
+			timeout = 35 * time.Second
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

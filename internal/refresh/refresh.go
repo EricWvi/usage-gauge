@@ -39,9 +39,9 @@ func (r *Refresher) Start(ctx context.Context, interval time.Duration) {
 		interval = DefaultInterval
 	}
 	go func() {
-		r.refreshAll(ctx)
 		t := time.NewTicker(interval)
 		defer t.Stop()
+		r.refreshAll(ctx)
 		for {
 			select {
 			case <-ctx.Done():
@@ -63,11 +63,21 @@ func (r *Refresher) refreshAll(ctx context.Context) {
 		return
 	}
 	defer r.running.Store(false)
+	if err := r.store.Prune(time.Now()); err != nil {
+		log.Printf("[usage-gauge] prune history: %v", err)
+	}
 
 	eps, err := config.LoadEndpoints()
 	if err != nil {
 		log.Printf("[usage-gauge] load endpoints: %v", err)
 		return
+	}
+	names := make([]string, len(eps))
+	for i := range eps {
+		names[i] = eps[i].Name
+	}
+	if _, err := r.store.DeleteNotIn(names); err != nil {
+		log.Printf("[usage-gauge] remove stale endpoints: %v", err)
 	}
 	if len(eps) == 0 {
 		return

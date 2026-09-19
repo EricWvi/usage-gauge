@@ -1,4 +1,6 @@
 endpoints:
+  - name: Codex
+    url: http://127.0.0.1:55666/api/usage
   - name: zai
     url: https://api.z.ai/api/monitor/usage/quota/limit
     methods: GET
