@@ -9,13 +9,11 @@ import (
 	"os/exec"
 )
 
-// codex serializes RPC exchanges. A failed exchange discards the process so a
-// late response cannot be mistaken for the next HTTP request's response.
+// codex serializes RPC exchanges. Each exchange starts and stops its own
+// process so a failed or stale process cannot affect a later request.
 type codex struct {
-	binary  string
-	dir     string
-	gate    chan struct{}
-	process *codexProcess
+	binary string
+	gate   chan struct{}
 }
 
 type rpcResponse struct {
@@ -41,8 +39,8 @@ type codexProcess struct {
 	nextID   int
 }
 
-func newCodex(binary, dir string) *codex {
-	return &codex{binary: binary, dir: dir, gate: make(chan struct{}, 1)}
+func newCodex(binary string) *codex {
+	return &codex{binary: binary, gate: make(chan struct{}, 1)}
 }
 
 func (c *codex) read(ctx context.Context) (json.RawMessage, error) {
@@ -55,32 +53,25 @@ func (c *codex) read(ctx context.Context) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if c.process == nil {
-		p, err := startCodex(ctx, c.binary, c.dir)
-		if err != nil {
-			return nil, err
-		}
-		c.process = p
-	}
-	result, err := c.process.call(ctx, "account/rateLimits/read", nil)
+	dir, err := os.MkdirTemp("", "usage-gauge-codex-")
 	if err != nil {
-		c.process.close()
-		c.process = nil
+		return nil, err
 	}
-	return result, err
-}
+	defer os.RemoveAll(dir)
 
-func (c *codex) close() {
-	c.gate <- struct{}{}
-	defer func() { <-c.gate }()
-	if c.process != nil {
-		c.process.close()
-		c.process = nil
+	p, err := startCodex(ctx, c.binary, dir)
+	if err != nil {
+		return nil, err
 	}
+	defer p.close()
+	return p.call(ctx, "account/rateLimits/read", nil)
 }
 
 func startCodex(ctx context.Context, binary, dir string) (*codexProcess, error) {
-	cmd := exec.Command(binary, "app-server", "--listen", "stdio://")
+	cmd := exec.Command(binary,
+		"-c", `sandbox_mode="danger-full-access"`,
+		"-c", `approval_policy="never"`,
+		"app-server", "--listen", "stdio://")
 	cmd.Dir = dir
 	cmd.Stderr = os.Stderr
 	stdin, err := cmd.StdinPipe()

@@ -32,23 +32,11 @@ func main() {
 }
 
 func run(ctx context.Context, addr, binary string, timeout time.Duration) error {
-	dir, err := os.MkdirTemp("", "usage-gauge-codex-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	c := newCodex(binary, dir)
-	defer c.close()
-	initCtx, cancel := context.WithTimeout(ctx, timeout)
-	c.process, err = startCodex(initCtx, binary, dir)
-	cancel()
-	if err != nil {
-		return err
-	}
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
+	c := newCodex(binary)
 	srv := &http.Server{
 		Handler:           routes(c, timeout),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -57,7 +45,7 @@ func run(ctx context.Context, addr, binary string, timeout time.Duration) error 
 	}
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(listener) }()
-	log.Printf("[codex-usage] listening on %s (codex cwd: %s)", listener.Addr(), dir)
+	log.Printf("[codex-usage] listening on %s", listener.Addr())
 	select {
 	case err := <-done:
 		return err

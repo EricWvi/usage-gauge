@@ -143,9 +143,9 @@ go run ./cmd/codex-usage
 curl http://127.0.0.1:55666/api/usage
 ```
 
-该命令会在系统临时目录下创建一个全新的目录作为工作目录，并启动 `codex app-server`。它会继承本地 Codex 配置和登录状态，完成 RPC 握手后保持进程运行。每次 `GET /api/usage` 都会调用 `account/rateLimits/read`，并返回原始的 `result` JSON（包括 `rateLimits`，以及可用时的 `rateLimitsByLimitId`）。它不会启动模型对话，也不会缓存结果。请参阅[官方 App Server 协议](https://developers.openai.com/zh-Hans/docs/app-server)。
+该命令会在系统临时目录下为每次请求创建一个全新的工作目录，并按请求启动和关闭 `codex app-server`。Codex 子进程使用 `sandbox_mode="danger-full-access"` 和 `approval_policy="never"`，以避免 Linux sandbox 对配额读取的影响。它会继承本地 Codex 配置和登录状态，完成 RPC 握手后调用 `account/rateLimits/read`，返回原始的 `result` JSON（包括 `rateLimits`，以及可用时的 `rateLimitsByLimitId`）。它不会启动模型对话，也不会缓存结果。请参阅[官方 App Server 协议](https://developers.openai.com/zh-Hans/docs/app-server)。
 
-查询请求会串行执行，排队和请求处理总超时时间为 30 秒。Codex 错误会返回 HTTP 502 和 `{"error":"..."}`；超时会返回 HTTP 504。查询失败后，下一个请求会启动全新的 Codex 进程。SIGINT/SIGTERM 会停止子进程并删除临时目录。
+查询请求会串行执行，排队和请求处理总超时时间为 30 秒。每个请求都会启动一个新的 Codex 子进程，查询结束后立即关闭并删除临时目录。Codex 错误会返回 HTTP 502 和 `{"error":"..."}`；超时会返回 HTTP 504。SIGINT/SIGTERM 会停止当前子进程并退出服务。
 
 参数：`-listen 0.0.0.0:55666`、`-codex codex`、`-timeout 30s`。默认监听所有网卡；该端点没有身份验证，请仅在可信网络中暴露，或通过防火墙限制访问。使用 `-listen 127.0.0.1:55666` 可恢复为仅本机访问。内置的 `codex` 解析器会将配额窗口映射为仪表盘格式。此桥接服务独立于仪表盘，也不属于仪表盘的 Docker 镜像。
 
@@ -163,7 +163,7 @@ codex login
 task run:setup-codex
 ```
 
-向导会询问 Codex 可执行文件路径和监听地址。默认监听 `0.0.0.0:55666`。该服务运行在 `~/.config/systemd/user/` 下，不需要 sudo。
+向导会询问 Codex 可执行文件路径、监听地址和代理地址。代理只需输入一次，默认值为 `http://127.0.0.1:7890`，向导会自动设置大小写两套 HTTP/HTTPS 代理变量以及 `NO_PROXY=127.0.0.1,localhost`。默认监听 `0.0.0.0:55666`。该服务运行在 `~/.config/systemd/user/` 下，不需要 sudo。
 
 如果希望电脑重启后在用户登录前也自动启动，请由 root 额外执行一次（不需要 Go）：
 

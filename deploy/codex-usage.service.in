@@ -8,6 +8,12 @@ Type=simple
 WorkingDirectory=@PROJECT_DIR@
 Environment=HOME=@HOME_DIR@
 Environment=PATH=@PATH@
+Environment=http_proxy=@PROXY_URL@
+Environment=https_proxy=@PROXY_URL@
+Environment=no_proxy=127.0.0.1,localhost
+Environment=HTTP_PROXY=@PROXY_URL@
+Environment=HTTPS_PROXY=@PROXY_URL@
+Environment=NO_PROXY=127.0.0.1,localhost
 ExecStart=@PROJECT_DIR@/build/codex-usage -listen @LISTEN_ADDR@ -codex @CODEX_BIN@
 Restart=on-failure
 RestartSec=5s

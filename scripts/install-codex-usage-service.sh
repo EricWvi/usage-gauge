@@ -198,6 +198,7 @@ escape_sed() {
 
 DEFAULT_CODEX_BIN="$(command -v codex || true)"
 DEFAULT_LISTEN_ADDR="0.0.0.0:55666"
+DEFAULT_PROXY_URL="http://127.0.0.1:7890"
 
 TOTAL_STAGES=3
 
@@ -235,6 +236,8 @@ fi
 
 ask LISTEN_ADDR "监听地址（默认：$DEFAULT_LISTEN_ADDR）："
 LISTEN_ADDR="${LISTEN_ADDR:-$DEFAULT_LISTEN_ADDR}"
+ask PROXY_URL "HTTP/HTTPS 代理地址（默认：$DEFAULT_PROXY_URL）："
+PROXY_URL="${PROXY_URL:-$DEFAULT_PROXY_URL}"
 HOME_DIR="$HOME"
 CODEX_DIR="$(dirname -- "$CODEX_BIN")"
 PATH_VALUE="$CODEX_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -243,6 +246,7 @@ note "项目目录：$REPO_DIR"
 note "服务用户：$USER"
 note "Codex 路径：$CODEX_BIN"
 note "监听地址：$LISTEN_ADDR"
+note "代理地址：$PROXY_URL"
 pause "配置确认后按 Enter 继续"
 
 stage "安装并启用 systemd user service"
@@ -257,6 +261,7 @@ sed \
   -e "s/@PROJECT_DIR@/$(escape_sed "$REPO_DIR")/g" \
   -e "s/@HOME_DIR@/$(escape_sed "$HOME_DIR")/g" \
   -e "s/@PATH@/$(escape_sed "$PATH_VALUE")/g" \
+  -e "s/@PROXY_URL@/$(escape_sed "$PROXY_URL")/g" \
   -e "s/@LISTEN_ADDR@/$(escape_sed "$LISTEN_ADDR")/g" \
   -e "s/@CODEX_BIN@/$(escape_sed "$CODEX_BIN")/g" \
   "$UNIT_TEMPLATE" > "$TMP_UNIT"

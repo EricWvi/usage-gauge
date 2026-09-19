@@ -18,8 +18,12 @@ func fakeCodex(t *testing.T, query string) (*codex, string) {
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "codex")
 	script := `#!/bin/sh
-test "$1" = app-server || exit 1
-pwd > observed-cwd
+test "$1" = -c || exit 1
+test "$2" = 'sandbox_mode="danger-full-access"' || exit 1
+test "$3" = -c || exit 1
+test "$4" = 'approval_policy="never"' || exit 1
+test "$5" = app-server || exit 1
+pwd >> "$(dirname "$0")/observed-cwd"
 id=0
 while IFS= read -r line; do
   case "$line" in
@@ -39,14 +43,13 @@ done
 	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	c := newCodex(binary, dir)
-	t.Cleanup(c.close)
+	c := newCodex(binary)
 	return c, dir
 }
 
 func TestLiveQueriesAndConcurrentRequests(t *testing.T) {
 	c, dir := fakeCodex(t, `printf '{"method":"account/rateLimits/updated","params":{}}\n'
-printf '{"id":%s,"result":{"rateLimits":{"primary":{"usedPercent":%s,"windowDurationMins":10080,"resetsAt":1800000000}}}}\n' "$id" "$id"`)
+printf '{"id":%s,"result":{"rateLimits":{"primary":{"usedPercent":%s,"windowDurationMins":10080,"resetsAt":1800000000}}}}\n' "$id" "$$"`)
 	handler := routes(c, 5*time.Second)
 	var wg sync.WaitGroup
 	values := make(chan int, 8)
@@ -83,8 +86,19 @@ printf '{"id":%s,"result":{"rateLimits":{"primary":{"usedPercent":%s,"windowDura
 		t.Fatalf("wanted eight fresh responses, got %v", seen)
 	}
 	observed, err := os.ReadFile(filepath.Join(dir, "observed-cwd"))
-	if err != nil || strings.TrimSpace(string(observed)) != dir {
-		t.Fatalf("cwd %q: %v", observed, err)
+	if err != nil {
+		t.Fatalf("cwd log: %v", err)
+	}
+	cwds := strings.Split(strings.TrimSpace(string(observed)), "\n")
+	if len(cwds) != 8 {
+		t.Fatalf("wanted eight fresh processes, got %q", cwds)
+	}
+	seenCWDs := map[string]bool{}
+	for _, cwd := range cwds {
+		seenCWDs[cwd] = true
+	}
+	if len(seenCWDs) != 8 {
+		t.Fatalf("wanted a fresh cwd per request, got %q", cwds)
 	}
 }
 
@@ -105,9 +119,6 @@ func TestQueryFailuresAndRecovery(t *testing.T) {
 				handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage", nil))
 				if w.Code != tc.status || !json.Valid(w.Body.Bytes()) {
 					t.Fatalf("status %d: %s", w.Code, w.Body)
-				}
-				if c.process != nil {
-					t.Fatal("failed process was not discarded")
 				}
 			}
 			// The next request starts a new process and can recover.
