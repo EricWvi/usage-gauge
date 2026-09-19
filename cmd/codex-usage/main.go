@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("listen", "127.0.0.1:55666", "HTTP listen address")
+	addr := flag.String("listen", "0.0.0.0:55666", "HTTP listen address")
 	binary := flag.String("codex", "codex", "Codex executable")
 	timeout := flag.Duration("timeout", 30*time.Second, "timeout for each query, including queueing")
 	flag.Parse()

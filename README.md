@@ -147,7 +147,36 @@ curl http://127.0.0.1:55666/api/usage
 
 查询请求会串行执行，排队和请求处理总超时时间为 30 秒。Codex 错误会返回 HTTP 502 和 `{"error":"..."}`；超时会返回 HTTP 504。查询失败后，下一个请求会启动全新的 Codex 进程。SIGINT/SIGTERM 会停止子进程并删除临时目录。
 
-参数：`-listen 127.0.0.1:55666`、`-codex codex`、`-timeout 30s`。使用 `-listen :55666` 可允许其他主机或容器访问；该端点没有身份验证，因此只能暴露在可信网络中。内置的 `codex` 解析器会将配额窗口映射为仪表盘格式。此桥接服务独立于仪表盘，也不属于仪表盘的 Docker 镜像。
+参数：`-listen 0.0.0.0:55666`、`-codex codex`、`-timeout 30s`。默认监听所有网卡；该端点没有身份验证，请仅在可信网络中暴露，或通过防火墙限制访问。使用 `-listen 127.0.0.1:55666` 可恢复为仅本机访问。内置的 `codex` 解析器会将配额窗口映射为仪表盘格式。此桥接服务独立于仪表盘，也不属于仪表盘的 Docker 镜像。
+
+### 使用 systemd 开机启动
+
+先使用运行 Codex 的同一个 Linux 用户完成登录，并构建桥接服务：
+
+```bash
+codex login
+```
+
+然后由同一个普通用户运行安装任务。该任务会先重新构建 `build/codex-usage`，再生成并安装当前用户的 `codex-usage.service`，执行 `daemon-reload`，设置用户会话启动，并立即启动或重启服务：
+
+```bash
+task run:setup-codex
+```
+
+向导会询问 Codex 可执行文件路径和监听地址。默认监听 `0.0.0.0:55666`。该服务运行在 `~/.config/systemd/user/` 下，不需要 sudo。
+
+如果希望电脑重启后在用户登录前也自动启动，请由 root 额外执行一次（不需要 Go）：
+
+```bash
+loginctl enable-linger <用户名>
+```
+
+查看状态和日志：
+
+```bash
+systemctl --user status codex-usage.service
+journalctl --user -u codex-usage.service -f
+```
 
 ### 仪表盘
 

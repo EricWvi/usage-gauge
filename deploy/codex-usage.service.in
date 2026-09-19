@@ -1,0 +1,20 @@
+[Unit]
+Description=Codex usage quota bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@PROJECT_DIR@
+Environment=HOME=@HOME_DIR@
+Environment=PATH=@PATH@
+ExecStart=@PROJECT_DIR@/build/codex-usage -listen @LISTEN_ADDR@ -codex @CODEX_BIN@
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGINT
+TimeoutStopSec=10s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
