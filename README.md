@@ -92,6 +92,38 @@ on the host. `gauge.db` is persisted in the mounted volume.
 
 ## Endpoints
 
+### Local Codex quota bridge
+
+Run the separate bridge on a machine with `codex` installed and already logged
+in with a ChatGPT account (`codex login`):
+
+```bash
+go run ./cmd/codex-usage
+curl http://127.0.0.1:55666/api/usage
+```
+
+The command starts `codex app-server` with a fresh directory under the system
+temporary directory as its working directory. It inherits the local Codex
+configuration and login, completes the RPC handshake, and keeps the process
+running. Every `GET /api/usage` calls `account/rateLimits/read` and returns its
+raw `result` JSON (including `rateLimits` and, when available,
+`rateLimitsByLimitId`). It does not start a model conversation or cache results.
+See the [official App Server protocol](https://developers.openai.com/zh-Hans/docs/app-server).
+
+Queries are serialized and have a 30-second timeout including queueing.
+Codex errors return HTTP 502 with `{"error":"..."}`; timeouts return HTTP 504.
+After a failed query the next request starts a fresh Codex process.
+SIGINT/SIGTERM stops the child process and removes the temporary directory.
+
+Flags: `-listen 127.0.0.1:55666`, `-codex codex`, `-timeout 30s`.
+Use `-listen :55666` to allow access from other hosts or containers; this
+endpoint has no authentication, so only expose it on a trusted network.
+The dashboard can poll this endpoint with a custom parser mapping the returned
+quota windows to its `tiers` format. This bridge is separate from the dashboard
+and its Docker image.
+
+### Dashboard
+
 - `GET /` — the dashboard page.
 - `GET /api/usage` — `{ lastUpdatedAt, lastUpdatedText, html }` (polled by the page).
 - `GET /static/{file}` — embedded CSS/JS.
