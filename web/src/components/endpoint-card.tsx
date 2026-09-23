@@ -141,11 +141,7 @@ export function EndpointCard({
               const used = percent(tier);
               const weekly = /\bweekly\b/i.test(tier.label || tier.name);
               const value = weekly ? 100 - used : used;
-              const color = weekly
-                ? `hsl(${value * 1.2} 65% 45%)`
-                : used >= 90
-                  ? "var(--destructive)"
-                  : item?.color;
+              const color = `hsl(${(100 - used) * 1.2} 65% 45%)`;
               return (
                 <div
                   className="quota-metric"
@@ -173,23 +169,17 @@ export function EndpointCard({
                     <span className="text-xs text-muted-foreground">
                       {weekly ? "left" : "used"}
                     </span>
-                    {weekly ? (
-                      <span
-                        className="ml-auto flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground"
-                        title={
-                          tier.resetsAt
-                            ? dateTime(Date.parse(tier.resetsAt))
-                            : undefined
-                        }
-                      >
-                        <Clock3 className="size-3" />
-                        {resetText(tier, now)}
-                      </span>
-                    ) : (
-                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                        {pct(100 - value)}% left
-                      </span>
-                    )}
+                    <span
+                      className="ml-auto flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground"
+                      title={
+                        tier.resetsAt
+                          ? dateTime(Date.parse(tier.resetsAt))
+                          : undefined
+                      }
+                    >
+                      <Clock3 className="size-3" />
+                      {resetText(tier, now)}
+                    </span>
                   </div>
                   <div
                     className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
@@ -214,19 +204,6 @@ export function EndpointCard({
                       }}
                     />
                   </div>
-                  {!weekly && (
-                    <p
-                      className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground"
-                      title={
-                        tier.resetsAt
-                          ? dateTime(Date.parse(tier.resetsAt))
-                          : undefined
-                      }
-                    >
-                      <Clock3 className="size-3" />
-                      {resetText(tier, now)}
-                    </p>
-                  )}
                 </div>
               );
             })

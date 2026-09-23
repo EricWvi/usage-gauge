@@ -1,5 +1,36 @@
 import { test, expect } from "@playwright/test";
 
+test("Claude five-hour color and reset layout", async ({ page }) => {
+  const data = fixture();
+  const endpoint = data.endpoints[0];
+  endpoint.name = endpoint.provider = "claude";
+  const tier = endpoint.latest!.tiers[0];
+  tier.name = "five_hour";
+  await page.route("**/api/usage", route => route.fulfill({ json: data }));
+  await page.goto("/");
+  const metric = page.locator('[data-endpoint="claude"] [data-tier="five_hour"]');
+  const bar = metric.getByRole("progressbar");
+  for (const used of [2, 50, 98]) {
+    tier.utilization = used;
+    await page.getByRole("button", { name: "Refresh view" }).click();
+    await expect(bar).toHaveAttribute("aria-valuenow", String(used));
+    await expect(metric.getByTestId("quota-value")).toHaveText(`${used}%`);
+    const expected = await page.evaluate(used => {
+      const el = document.createElement("div");
+      el.style.backgroundColor = `hsl(${(100 - used) * 1.2} 65% 45%)`;
+      return el.style.backgroundColor;
+    }, used);
+    expect(await bar.locator("div").evaluate(el => (el as HTMLElement).style.backgroundColor)).toBe(expected);
+  }
+  await expect(metric.getByText(/% left/)).toHaveCount(0);
+  const row = metric.getByTestId("quota-value").locator("..");
+  await expect(row.getByText(/Resets in/)).toBeVisible();
+  await expect(metric.getByText(/Resets in/)).toHaveCount(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(row.getByText(/Resets in/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 function fixture() {
   const now = Date.now();
   return {
