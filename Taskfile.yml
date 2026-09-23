@@ -13,9 +13,22 @@ tasks:
       - mkdir -p build
       - go build -o build/codex-usage ./cmd/codex-usage
 
+  build:claude-usage:
+    desc: 构建 claude-usage 二进制文件
+    cmds:
+      - mkdir -p build
+      - go build -o build/claude-usage ./cmd/claude-usage
+
   run:setup-codex:
     desc: 构建并安装当前用户的 codex-usage systemd 服务
     cmds:
       - test "$(id -u)" -ne 0 || (echo '请使用已安装 Go 的普通用户执行 task，不要使用 root' >&2; exit 1)
       - task build:codex-usage
       - ./scripts/install-codex-usage-service.sh
+
+  run:setup-claude:
+    desc: 构建并安装当前用户的 claude-usage systemd 服务
+    cmds:
+      - test "$(id -u)" -ne 0 || (echo '请使用已安装 Go 的普通用户执行 task，不要使用 root' >&2; exit 1)
+      - task build:claude-usage
+      - ./scripts/install-claude-usage-service.sh

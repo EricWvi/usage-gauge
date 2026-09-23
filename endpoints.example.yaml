@@ -1,6 +1,10 @@
 endpoints:
   - name: Codex
     url: http://127.0.0.1:55666/api/usage
+    parser: codex
+  - name: Claude Code
+    url: http://127.0.0.1:55667/api/usage
+    parser: claude
   - name: zai
     url: https://api.z.ai/api/monitor/usage/quota/limit
     methods: GET

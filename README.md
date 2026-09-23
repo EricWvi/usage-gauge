@@ -27,9 +27,9 @@ config/
 | `name`     | 是   | 显示名称，也作为默认解析器名称 |
 | `url`      | 是   | 端点 URL |
 | `methods`  | 否   | HTTP 方法（默认为 `GET`） |
-| `headers`  | 否   | 请求头；zai 需要 Authorization，Codex 不需要 |
+| `headers`  | 否   | 请求头；zai 需要 Authorization，Codex/Claude 桥接服务不需要 |
 | `parser`   | 否   | 解析器名称（默认为 `name`） |
-| `timeoutMs`| 否   | 请求超时时间（默认 10000；Codex 为 35000） |
+| `timeoutMs`| 否   | 请求超时时间（默认 10000；Codex/Claude 为 35000） |
 
 对于 Codex，只需要名称和桥接服务 URL：
 
@@ -60,7 +60,7 @@ function parse(body, ctx) {
 }
 ```
 
-解析器的查找顺序为：`config/parser/<name>.js`（你的覆盖解析器或新端点解析器）→ 同名的内置解析器。二进制文件内置 `zai` 和 `codex` 解析器。`tier` 的 `name` 是稳定的序列标识符；可选的 `label` 控制显示文本。Codex 同时支持旧版单配额桶和多配额桶速率限制响应，包括 5 小时和每周窗口。参考示例请参阅 [`examples/parser/zai.js`](./examples/parser/zai.js)。
+解析器的查找顺序为：`config/parser/<name>.js`（你的覆盖解析器或新端点解析器）→ 同名的内置解析器。二进制文件内置 `zai`、`codex` 和 `claude` 解析器。`tier` 的 `name` 是稳定的序列标识符；可选的 `label` 控制显示文本。Codex 同时支持旧版单配额桶和多配额桶速率限制响应，包括 5 小时和每周窗口。参考示例请参阅 [`examples/parser/zai.js`](./examples/parser/zai.js)。
 
 ## 本地运行
 
@@ -78,6 +78,7 @@ go run ./cmd/usage-gauge
 ```bash
 task build:usage-gauge
 task build:codex-usage
+task build:claude-usage
 ```
 
 环境变量：
@@ -177,6 +178,51 @@ loginctl enable-linger <用户名>
 systemctl --user status codex-usage.service
 journalctl --user -u codex-usage.service -f
 ```
+
+### 本地 Claude 配额桥接服务
+
+在保存了 Claude Code OAuth 登录凭据的机器上运行：
+
+```bash
+go run ./cmd/claude-usage
+curl http://127.0.0.1:55667/api/usage
+```
+
+每个 `GET /api/usage` 请求都会重新打开本地凭据文件，读取 `claudeAiOauth.accessToken`，实时请求 `https://api.anthropic.com/api/oauth/usage` 并返回原始 JSON。该上游是未公开的 OAuth 接口，协议可能变化。服务不缓存 token 或额度，不启动模型对话，不自动重试，也不刷新或写回凭据。Claude Code 更新 token 后，下次请求直接使用新值，无须重启服务。
+
+凭据文件默认使用 `$CLAUDE_CONFIG_DIR/.credentials.json`；未设置该环境变量时使用 `~/.claude/.credentials.json`。也可用 `-credentials /absolute/path/.credentials.json` 指定。当前支持文件凭据，不读取 macOS Keychain。
+
+参数：`-listen 0.0.0.0:55667`、`-credentials <文件路径>`、`-timeout 30s`。遵循 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 环境变量。服务默认监听所有网卡且没有鉴权，与 Codex 桥接服务一样应只对可信网络开放；仅本机访问可指定 `-listen 127.0.0.1:55667`。
+
+上游 401/403 原样返回状态码，提示通过 Claude Code 刷新登录；429 返回同状态码和上游 `Retry-After`。缺失/损坏的凭据文件、网络或上游异常返回 502，缺少 OAuth token 返回 401，查询超时返回 504。错误响应为 `{"error":"..."}`，不包含凭据或上游错误正文。所有响应设置 `Cache-Control: no-store`。
+
+仪表盘配置：
+
+```yaml
+endpoints:
+  - name: Claude Code
+    url: http://127.0.0.1:55667/api/usage
+    parser: claude
+```
+
+内置 `claude` 解析器支持 5 小时、每周、模型专属周窗口、新格式 `limits` 数组和启用后的额外用量百分比。缺失或 `null` 的窗口不会补成零；百分比直接使用上游值。仪表盘每 5 分钟采样一次，页面刷新仍只读取采样记录。容器中请使用可访问桥接宿主机的地址，方式同 Codex。
+
+构建命令为 `task build:claude-usage`。如需安装 systemd 服务，使用与 Claude Code 登录相同的普通用户运行：
+
+```bash
+task run:setup-claude
+```
+
+任务会先重新构建桥接服务，再启动安装向导，询问凭据文件路径、监听地址（默认 `0.0.0.0:55667`）和 HTTP/HTTPS 代理地址（默认 `http://127.0.0.1:7890`）。凭据路径默认遵循 `CLAUDE_CONFIG_DIR`，未设置时使用 `~/.claude/.credentials.json`；向导只检查文件是否可读，不读取或复制 token。
+
+确认配置后，向导生成 `~/.config/systemd/user/claude-usage.service`，执行 `daemon-reload`、`enable` 和 `restart`，让服务在用户会话启动时自动启动。若需要重启后在用户登录前启动，由 root 执行一次 `loginctl enable-linger <用户名>`，同 Codex 服务。
+
+```bash
+systemctl --user status claude-usage.service
+journalctl --user -u claude-usage.service -f
+```
+
+桥接服务独立于仪表盘，不包含在仪表盘 Docker 镜像中。
 
 ### 仪表盘
 

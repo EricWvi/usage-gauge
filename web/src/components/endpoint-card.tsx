@@ -80,7 +80,9 @@ export function EndpointCard({
       ? "OpenAI"
       : endpoint.provider === "zai"
         ? "Z.ai"
-        : endpoint.provider;
+        : endpoint.provider === "claude"
+          ? "Anthropic"
+          : endpoint.provider;
 
   return (
     <Card
