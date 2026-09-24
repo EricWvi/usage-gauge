@@ -1,35 +1,38 @@
 import { test, expect } from "@playwright/test";
 
-test("Claude five-hour color and reset layout", async ({ page }) => {
-  const data = fixture();
-  const endpoint = data.endpoints[0];
-  endpoint.name = endpoint.provider = "claude";
-  const tier = endpoint.latest!.tiers[0];
-  tier.name = "five_hour";
-  await page.route("**/api/usage", route => route.fulfill({ json: data }));
-  await page.goto("/");
-  const metric = page.locator('[data-endpoint="claude"] [data-tier="five_hour"]');
-  const bar = metric.getByRole("progressbar");
-  for (const used of [2, 50, 98]) {
-    tier.utilization = used;
-    await page.getByRole("button", { name: "Refresh view" }).click();
-    await expect(bar).toHaveAttribute("aria-valuenow", String(used));
-    await expect(metric.getByTestId("quota-value")).toHaveText(`${used}%`);
-    const expected = await page.evaluate(used => {
-      const el = document.createElement("div");
-      el.style.backgroundColor = `hsl(${(100 - used) * 1.2} 65% 45%)`;
-      return el.style.backgroundColor;
-    }, used);
-    expect(await bar.locator("div").evaluate(el => (el as HTMLElement).style.backgroundColor)).toBe(expected);
-  }
-  await expect(metric.getByText(/% left/)).toHaveCount(0);
-  const row = metric.getByTestId("quota-value").locator("..");
-  await expect(row.getByText(/Resets in/)).toBeVisible();
-  await expect(metric.getByText(/Resets in/)).toHaveCount(1);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(row.getByText(/Resets in/)).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-});
+for (const provider of ["claude", "codex"]) {
+  test(`${provider} five-hour color and reset layout`, async ({ page }) => {
+    const data = fixture();
+    const endpoint = data.endpoints[0];
+    endpoint.name = endpoint.provider = provider;
+    const tier = endpoint.latest!.tiers[0];
+    tier.name = "five_hour";
+    await page.route("**/api/usage", route => route.fulfill({ json: data }));
+    await page.goto("/");
+    const metric = page.locator(`[data-endpoint="${provider}"] [data-tier="five_hour"]`);
+    const bar = metric.getByRole("progressbar");
+    for (const used of [2, 50, 98]) {
+      tier.utilization = used;
+      await page.getByRole("button", { name: "Refresh view" }).click();
+      await expect(bar).toHaveAttribute("aria-valuenow", String(used));
+      await expect(metric.getByTestId("quota-value")).toHaveText(`${used}%`);
+      const expected = await page.evaluate(used => {
+        const el = document.createElement("div");
+        el.style.backgroundColor = `hsl(${(100 - used) * 1.2} 65% 45%)`;
+        return el.style.backgroundColor;
+      }, used);
+      expect(await bar.locator("div").evaluate(el => (el as HTMLElement).style.backgroundColor)).toBe(expected);
+    }
+    await expect(metric.getByText(/% left/)).toHaveCount(0);
+    const row = metric.getByTestId("quota-value").locator("..");
+    await expect(row.getByText(/Resets in/)).toBeVisible();
+    await expect(metric.getByText(/Resets in/)).toHaveCount(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(row.getByText(/Resets in/)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+}
 
 function fixture() {
   const now = Date.now();
@@ -231,4 +234,39 @@ test("weekly quota shows remaining capacity and shifts from green to red", async
   await expect(
     page.getByRole("progressbar", { name: "5-hour window used" }).first(),
   ).toBeVisible();
+});
+
+
+test("Codex keeps a five-hour region without inventing usage", async ({ page }, info) => {
+  const data = fixture();
+  const endpoint = data.endpoints[0];
+  endpoint.latest!.message = "pro_lite";
+  for (const sample of endpoint.history) {
+    sample.tiers = sample.tiers.filter(tier => tier.label !== "five_hour");
+  }
+  await page.route("**/api/usage", route => route.fulfill({ json: data }));
+  await page.goto("/");
+  const card = page.locator('[data-endpoint="codex"]');
+  const missing = card.locator('[data-tier="codex:five-hour-unavailable"]');
+  await expect(missing.getByText("5-hour window", { exact: true })).toBeVisible();
+  await expect(missing.getByText("No 5-hour limit", { exact: true })).toBeVisible();
+  await expect(missing.getByRole("progressbar")).toHaveCount(0);
+  await expect(missing.getByTestId("quota-value")).toHaveCount(0);
+  await expect(missing.getByText(/Resets/)).toHaveCount(0);
+  await expect(card.getByRole("progressbar", { name: "Weekly window left" })).toBeVisible();
+  await expect(card.locator(".recharts-area")).toHaveCount(1);
+  await page.screenshot({ path: info.outputPath("codex-pro-lite.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(missing).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  endpoint.latest!.message = "plus";
+  await page.getByRole("button", { name: "Refresh view" }).click();
+  await expect(missing.getByText("Not reported", { exact: true })).toBeVisible();
+  await expect(card.getByText("No 5-hour limit", { exact: true })).toHaveCount(0);
+
+  endpoint.latest!.status = "error";
+  await page.getByRole("button", { name: "Refresh view" }).click();
+  await expect(missing).toHaveCount(0);
+  await expect(card.getByText("Current quota unavailable. Previous samples remain below.")).toBeVisible();
 });

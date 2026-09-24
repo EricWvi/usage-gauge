@@ -69,7 +69,7 @@ function parse(body, ctx) {
 ```bash
 mkdir -p config
 cp endpoints.example.yaml config/endpoints.yaml   # 填入真实密钥
-go run ./cmd/usage-gauge
+task run:backend
 # API：http://localhost:3000/api/usage
 ```
 
@@ -95,11 +95,11 @@ task build:claude-usage
 
 ```bash
 npm --prefix web ci
-npm --prefix web run dev
+task run:frontend
 # 打开 http://localhost:5173
 ```
 
-Vite 提供页面，并将 `/api` 代理到 3000 端口上的 Go 后端。开发期间两个进程都不需要构建前端。
+在两个终端分别运行 `task run:backend` 和 `task run:frontend`。Vite 提供页面，并将 `/api` 代理到 3000 端口上的 Go 后端。开发期间两个进程都不需要构建前端。前端参数可通过 `--` 传入，例如 `task run:frontend -- --host 0.0.0.0`。
 
 Vite 的生产构建输出位于 `web/dist/`，该目录已被 Git 忽略，也会被排除在 Docker 构建上下文之外。Docker 会在 Node 阶段构建前端，将构建结果复制到 Go 阶段，然后使用 `-tags production` 编译。只有这个构建标签会启用 `web/embed.go` 和前端静态路由。请提交源代码和锁文件的变更，不要提交 dist。Docker 工作流不要求本地进行生产构建。
 

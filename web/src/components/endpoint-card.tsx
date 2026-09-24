@@ -56,6 +56,13 @@ export function EndpointCard({
     series.map((s) => [s.key, { label: tierLabel(s.tier), color: s.color }]),
   ) satisfies ChartConfig;
   const latest = endpoint.latest;
+  const missingFiveHour =
+    endpoint.provider === "codex" &&
+    latest?.status === "ok" &&
+    !latest.tiers.some((tier) =>
+      /5-hour window/i.test(tierLabel(tier)),
+    );
+  const proLite = /^pro[\s_-]*lite$/i.test(latest?.message?.trim() ?? "");
   const stale = latest && now - latest.updatedAt > interval * 2;
   const healthy = latest?.status === "ok" && !stale;
   const status = !latest
@@ -135,6 +142,23 @@ export function EndpointCard({
           </div>
         )}
         <div className="quota-grid mx-5 my-6 sm:mx-7">
+          {missingFiveHour && (
+            <div className="quota-metric" data-tier="codex:five-hour-unavailable">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="size-2 rounded-full bg-muted-foreground/40" />
+                5-hour window
+              </div>
+              <p className="mt-2 text-xl font-semibold leading-tight tracking-tight">
+                {proLite ? "No 5-hour limit" : "Not reported"}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {proLite
+                  ? "Not applicable to Pro Lite. Other quota windows still apply."
+                  : "No 5-hour quota data returned for this account."}
+              </p>
+              <div className="mt-3 h-1.5 rounded-full border border-dashed border-border" aria-hidden="true" />
+            </div>
+          )}
           {latest?.status === "ok" && latest.tiers.length > 0 ? (
             latest.tiers.map((tier) => {
               const item = series.find((s) => s.tier.name === tier.name);
@@ -207,7 +231,7 @@ export function EndpointCard({
                 </div>
               );
             })
-          ) : (
+          ) : !missingFiveHour && (
             <p className="py-2 text-sm text-muted-foreground">
               {!latest
                 ? "The first sample is on its way."

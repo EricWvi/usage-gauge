@@ -1,6 +1,17 @@
 version: '3'
 
 tasks:
+  run:backend:
+    desc: 启动 Go 后端开发服务（默认端口 3000）
+    cmds:
+      - go run ./cmd/usage-gauge
+
+  run:frontend:
+    desc: 启动 Vite 前端开发服务（API 代理到本机 3000 端口）
+    dir: web
+    cmds:
+      - npm run dev -- {{.CLI_ARGS}}
+
   build:usage-gauge:
     desc: 构建 usage-gauge 二进制文件
     cmds:
